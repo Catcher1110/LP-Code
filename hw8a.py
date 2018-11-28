@@ -168,3 +168,4 @@ for i in range(len(intensity)):
 arr = scipy.reshape(intensity,(h,w)).astype('uint8')
 final_image = Image.fromarray(arr)
 final_image.save('final_image.png')
+
