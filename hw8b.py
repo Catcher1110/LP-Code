@@ -69,7 +69,6 @@ for t in range(len(intensity)):
         Edges.append([t, t+1])
         Edges.append([t, t-w])
         Edges.append([t, t+w])
-# print('Row_cal = %d'%(row_cal))
 print('The number of edges is %d'%(len(Edges)))
 
 def cal_cost_edge(edge):
@@ -86,7 +85,6 @@ CostEdges = []
 for edge in Edges:
     CostEdges.append(cal_cost_edge(edge))
 print('The number of costs is %d'%(len(CostEdges)))
-# print(CostEdges)
 
 # Calculate the node can be arrived
 Nodes = [i for k in Edges for i in k]
@@ -111,34 +109,39 @@ model.intensity = pe.Param(model.lenintensity, initialize = lambda model, t: int
 
 # -------------VARIABLES------------
 model.x = pe.Var(model.edges, domain = pe.NonNegativeReals)
-model.y = pe.Var(model.nodes, domain = pe.NonNegativeReals)
 
 # ------CONSTRAINTS-----------
-def rule_1(model, edgeid): # d_uv - d_u + d_v >= 0
-    y_1 = Edges[edgeid][0] + 1
-    if Edges[edgeid][1] == targetnode:
-        y_2 = len(Nodes) - 1
-    else:
-        y_2 = Edges[edgeid][1] + 1
-    return model.x[edgeid] - model.y[y_1] + model.y[y_2] >= 0
+def rule_1(model, edgeid): # f_uv <= C_uv
+    if edgeid%10000 == 0:
+        print('%d Inequality Constraints are established. \n'%(edgeid))
+    return model.x[edgeid] <= CostEdges[edgeid]
 model.ruleCons1 = pe.Constraint(model.edges, rule = rule_1)
 
-def rule_2(model, nodeid): #d_v + d_sv >= 1
-    return model.y[nodeid+1] + model.x[nodeid]>= 1
+def rule_2(model, nodeid): # sum f_vu = sum f_uv
+    # nodeid is: 0, 1, 2, ..., 12699
+    if nodeid%1000 == 0:
+        print('%d Equality Constraints are established. \n'%(nodeid))
+    fvu, fuv = [], []
+    for edge in Edges:
+        if edge[0] == nodeid:
+            fuv.append(Edges.index(edge))
+        if edge[1] == nodeid:
+            fvu.append(Edges.index(edge))
+    sumfvu = sum(model.x[i] for i in fvu)
+    sumfuv = sum(model.x[i] for i in fuv)    
+    return sumfvu == sumfuv
 model.ruleCons2 = pe.Constraint(model.lenintensity, rule = rule_2)
-
-def rule_3(model, nodeid): #-d_u + d_ut >= 0
-    return -model.y[nodeid+1] + model.x[nodeid + h*w]>= 0
-model.ruleCons3 = pe.Constraint(model.lenintensity, rule = rule_3)
 
 # ------OBJECTIVE-----------
 
 def obj_rule(model):
-    return sum(CostEdges[i] * model.x[i] for i in model.edges)
+    sumxsv = []
+    for i in range(len(intensity)): # i is 0, 1, 2, ..., 12699
+        if [sourcenode, i] in Edges:
+            sumxsv.append(Edges.index([sourcenode, i]))
+    return sum(model.x[i] for i in sumxsv)
     
-model.OBJ = pe.Objective(rule = obj_rule, sense = pe.minimize)
-
-# model.OBJ.pprint()
+model.OBJ = pe.Objective(rule = obj_rule, sense = pe.maximize)
 
 #----------SOLVING----------
 solver = pe.SolverFactory('gurobi') # Specify Solver
@@ -148,24 +151,4 @@ results = solver.solve(model, tee = False, keepfiles = False)
 print()
 print("Status:", results.solver.status)
 print("Termination Condition:", results.solver.termination_condition)
-
-
-# ---------POST-PROCESSING-------------------
-print()
-nodeofarea = []
-for i in range(len(intensity)):
-    if model.y[i].value == 1:
-        nodeofarea.append(i)       
 print("\nObjective function value: ", model.OBJ())
-
-for i in range(len(intensity)):
-    if i in nodeofarea:
-        pass
-    else:
-        intensity[i] = 255
-
-# resize final intensities and save as an image
-arr = scipy.reshape(intensity,(h,w)).astype('uint8')
-final_image = Image.fromarray(arr)
-final_image.save('final_image.png')
-
